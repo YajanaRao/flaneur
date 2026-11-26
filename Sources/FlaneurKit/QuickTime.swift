@@ -1,12 +1,10 @@
 import AppKit
 import Foundation
 
-/// QuickTime Player's File ▸ New Screen Recording (⌃⌘N) as a launcher row.
 enum QuickTime {
     static let bundleID = "com.apple.QuickTimePlayerX"
     private static let timeout: Duration = .seconds(20)
 
-    /// The one row, and only on a Mac that has QuickTime Player.
     static func collect() async -> [Recording] {
         guard await installed() else { return [] }
         return [Recording(title: "Screen Recording", subtitle: "QuickTime Player")]

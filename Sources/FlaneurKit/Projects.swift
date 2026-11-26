@@ -54,7 +54,6 @@ public struct ProjectFolder: Hashable, Sendable, Codable {
     public let branch: String
     public let branches: [String]
     public let workflows: [Workflow]
-    /// File names, sizes and mtimes. Unchanged signatures reuse the parsed workflows.
     public let workflowSignature: String
 
     public init(

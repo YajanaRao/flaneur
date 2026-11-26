@@ -16,6 +16,7 @@ struct PresentedRow: Equatable, Identifiable, Sendable {
 struct LauncherView: View {
     let launcher: Launcher
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.colorSchemeContrast) private var contrast
     @FocusState private var fieldFocused: Bool
 
     var body: some View {
@@ -39,10 +40,6 @@ struct LauncherView: View {
             .padding(.horizontal, 16)
             .padding(.vertical, 16)
 
-            Rectangle()
-                .fill(palette.rule)
-                .frame(height: 1)
-
             ScrollViewReader { proxy in
                 ScrollView {
                     LazyVStack(spacing: 0) {
@@ -51,34 +48,47 @@ struct LauncherView: View {
                                 .id(row.id)
                         }
                     }
+                    .padding(.top, 8)
+                    .padding(.bottom, 8)
                 }
                 .focusable(false)
+                .mask {
+                    VStack(spacing: 0) {
+                        LinearGradient(colors: [.clear, .black], startPoint: .top, endPoint: .bottom)
+                            .frame(height: 8)
+                        Rectangle()
+                    }
+                }
+                .safeAreaInset(edge: .bottom, spacing: 0) {
+                    let footer = launcher.footer
+                    if !footer.isEmpty {
+                        HStack(spacing: 6) {
+                            Spacer(minLength: 0)
+                            ForEach(footer) { item in
+                                ActionPill(item: item, palette: palette)
+                            }
+                        }
+                        .font(.caption)
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 8)
+                    }
+                }
                 .onChange(of: rows.first(where: \.selected)?.id) { _, id in
                     guard let id else { return }
                     proxy.scrollTo(id)
                     fieldFocused = true
                 }
             }
-
-            let footer = launcher.footer
-            if !footer.isEmpty {
-                HStack(spacing: 12) {
-                    Spacer(minLength: 0)
-                    HStack(spacing: 6) {
-                        ForEach(footer) { item in
-                            ActionPill(item: item, palette: palette)
-                        }
-                    }
-                }
-                .font(.caption)
-                .frame(maxWidth: .infinity)
-                .padding(.horizontal, 14)
-                .padding(.vertical, 8)
-            }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .background(PanelBackground(palette: palette))
         .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .overlay {
+            if contrast == .increased {
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .strokeBorder(palette.text.opacity(0.7), lineWidth: 1)
+            }
+        }
         .onAppear { fieldFocused = true }
         .onChange(of: launcher.generation) { _, _ in
             fieldFocused = true
@@ -86,15 +96,16 @@ struct LauncherView: View {
     }
 }
 
-/// Yab's "window around the page": the desktop blurs through under a theme tint.
-/// With Reduce Transparency on, the color is worn whole.
 private struct PanelBackground: View {
     let palette: Palette
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+    @Environment(\.colorSchemeContrast) private var contrast
 
     var body: some View {
-        if reduceTransparency {
+        if reduceTransparency || contrast == .increased {
             palette.background
+        } else if #available(macOS 26.0, *) {
+            palette.background.opacity(0.15)
         } else {
             Rectangle()
                 .fill(.thinMaterial)
@@ -216,7 +227,6 @@ private struct IconSlot: View {
         }
     }
 
-    /// The profile photo, once it is in memory. The app icon stays until then.
     private var portrait: NSImage? {
         guard let remoteURL else { return nil }
         return fetched ?? Icons.cachedPhoto(remoteURL)
@@ -256,7 +266,6 @@ private struct RowView: View {
             }
             .padding(.leading, 10)
             .padding(.trailing, 13)
-            .padding(.vertical, 8)
             Spacer(minLength: 8)
             if !row.badge.isEmpty {
                 styled(row.badge, marks: row.badgeMarks, base: palette.muted, hit: palette.accent)
@@ -266,7 +275,7 @@ private struct RowView: View {
                     .padding(.trailing, 14)
             }
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .frame(maxWidth: .infinity, minHeight: 48, maxHeight: 48, alignment: .leading)
         .background(
             row.selected ? palette.row : Color.clear,
             in: RoundedRectangle(cornerRadius: 8, style: .continuous)
@@ -277,7 +286,6 @@ private struct RowView: View {
     }
 }
 
-/// One footer pill: the action's title beside its keycap, tinycast's `Open Application ↵`.
 private struct ActionPill: View {
     let item: LauncherState.FooterItem
     let palette: Palette
@@ -289,16 +297,31 @@ private struct ActionPill: View {
             Text(item.keyLabel)
                 .padding(.horizontal, 4)
                 .padding(.vertical, 1)
-                .background(palette.background, in: RoundedRectangle(cornerRadius: 4, style: .continuous))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 4, style: .continuous)
-                        .strokeBorder(palette.rule, lineWidth: 0.5)
+                .background(
+                    palette.text.opacity(0.10),
+                    in: RoundedRectangle(cornerRadius: 4, style: .continuous)
                 )
                 .foregroundStyle(palette.muted)
         }
         .padding(.horizontal, 8)
         .padding(.vertical, 4)
-        .background(palette.row, in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+        .background(
+            palette.text.opacity(0.07),
+            in: RoundedRectangle(cornerRadius: 6, style: .continuous)
+        )
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                .strokeBorder(
+                    LinearGradient(
+                        colors: [palette.text.opacity(0.22), palette.text.opacity(0.06)],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    ),
+                    lineWidth: 0.5
+                )
+        )
+        .shadow(color: .black.opacity(0.18), radius: 1.5, x: 0, y: 1)
     }
 }
 
@@ -330,7 +353,6 @@ private func styled(_ text: String, marks: [Mark], base: Color, hit: Color) -> T
     return result
 }
 
-/// Rows updating used to move the first responder onto the list. The caret stays in the field.
 private struct FieldFocus: NSViewRepresentable {
     var active: Bool
 

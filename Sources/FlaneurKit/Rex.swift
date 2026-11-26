@@ -7,9 +7,6 @@ enum Rex {
         + "/Library/Application Support/com.superlogical.rex/RexServer/Versions/Current/Rex Server.app/Contents/MacOS/rex"
     private static let timeout: Duration = .seconds(2)
 
-    /// One row per block across every session, including detached ones (`block ls` has them,
-    /// `session.view` does not), plus one row per session. A missing CLI or a server that is
-    /// down is an empty list, not a failure — the same as a browser that is not running.
     static func collect() async throws -> RexListing {
         let sessionsData: Data
         do {
@@ -30,7 +27,6 @@ enum Rex {
         var sessionRows: [RexSession] = []
         var blocks: [RexBlock] = []
         for session in sessions {
-            // A session that vanishes mid-collect is no failure; the rest still list.
             var placed: [RexBlock] = []
             var windowCount = 0
             if let data = try? await Shell.run(
@@ -68,14 +64,13 @@ enum Rex {
     /// `session.select` shows the session (and tab) in the app first: focusing a block
     /// alone cannot switch the app to another session. `block focus` is best-effort:
     /// a detached block is in no window and rejects it by contract — the session shows.
-    static func focus(blockID: String, sessionID: String, windowID: String) async throws {
+    static func focus(blockID: String, sessionID: String, windowID: String?) async throws {
         _ = try? await Shell.run(
             binary,
             ["--timeout", "1s", "--autostart=false", "do", "session.select", "session_id=\(sessionID)"]
-                + (windowID.isEmpty ? [] : ["window_id=\(windowID)"]),
+                + (windowID.map { ["window_id=\($0)"] } ?? []),
             timeout: timeout
         )
-        // Notification rows reach here without a window id; the block knows its own.
         _ = try? await Shell.run(
             binary, ["--timeout", "1s", "--autostart=false", "block", "focus", blockID], timeout: timeout
         )

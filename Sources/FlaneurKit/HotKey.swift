@@ -136,7 +136,6 @@ private func installHandlerIfNeeded() {
     handlerInstalled = true
 }
 
-// Carbon may deliver this off the main thread. The hop below keeps that from killing the process.
 private let carbonHotKeyHandler: EventHandlerUPP = { _, event, _ in
     guard let event else { return noErr }
     var hotKeyID = EventHotKeyID()

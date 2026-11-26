@@ -38,7 +38,6 @@ enum Apps {
         try await NSWorkspace.shared.openApplication(at: url, configuration: configuration)
     }
 
-    /// The app the panel is covering. Nil when Flâneur itself is already frontmost.
     @MainActor
     static func frontmostURL() -> URL? {
         guard let app = NSWorkspace.shared.frontmostApplication,
@@ -58,7 +57,6 @@ enum Apps {
         try await activate(app)
     }
 
-    /// A graceful terminate, as ⌘Q. The app may still refuse (unsaved work stays its call).
     static func quit(_ url: URL) async throws {
         guard let app = await MainActor.run(body: { runningMatch(resolve(url)) }) else {
             throw ActivationError.notRunning
@@ -66,7 +64,6 @@ enum Apps {
         await MainActor.run { app.terminate() }
     }
 
-    /// Terminate, wait for the process to exit, then launch again.
     static func restart(_ url: URL) async throws {
         let resolved = resolve(url)
         guard let app = await MainActor.run(body: { runningMatch(resolved) }) else {

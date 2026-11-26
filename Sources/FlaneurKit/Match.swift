@@ -14,17 +14,23 @@ struct Ranking: Sendable {
 
 enum Match {
     static let limit = 100
-    /// A hit in the title outranks the same hit in the subtitle, the badge, or a hidden field.
     private static let titleBonus = 32
 
-    /// Space-separated terms are AND-ed. Each term may land in a different field.
-    /// `recent` is a tie-break: lower is more recent, `Int.max` means unseen.
-    static func rank(_ query: String, _ items: [Item], recent: (Item) -> Int = { _ in Int.max }) -> [Ranking] {
+    /// Unseen (nil) sorts after every seen time.
+    private static func olderFirst(_ lhs: Int?, _ rhs: Int?) -> Bool {
+        switch (lhs, rhs) {
+        case let (left?, right?): return left < right
+        case (_?, nil): return true
+        default: return false
+        }
+    }
+
+    static func rank(_ query: String, _ items: [Item], recent: (Item) -> Int? = { _ in nil }) -> [Ranking] {
         let terms = split(query).map { Prepared($0) }
         if terms.isEmpty {
             return items.prefix(limit).map { Ranking(item: $0) }
         }
-        var scored: [(score: Int, recent: Int, index: Int, ranking: Ranking)] = []
+        var scored: [(score: Int, recent: Int?, index: Int, ranking: Ranking)] = []
         scored.reserveCapacity(items.count)
         for (index, item) in items.enumerated() {
             guard let ranking = score(terms, item) else { continue }
@@ -32,7 +38,7 @@ enum Match {
         }
         scored.sort { lhs, rhs in
             if lhs.score != rhs.score { return lhs.score > rhs.score }
-            if lhs.recent != rhs.recent { return lhs.recent < rhs.recent }
+            if lhs.recent != rhs.recent { return olderFirst(lhs.recent, rhs.recent) }
             if lhs.ranking.item.attention != rhs.ranking.item.attention {
                 return lhs.ranking.item.attention < rhs.ranking.item.attention
             }
@@ -78,7 +84,6 @@ enum Match {
         )
     }
 
-    /// Greedy left-to-right subsequence. nil unless every needle character matches in order.
     private static func score(_ needle: Prepared, _ field: Prepared) -> (score: Int, positions: [Int])? {
         if needle.folded.isEmpty { return nil }
         if field.folded.isEmpty { return nil }
@@ -123,7 +128,6 @@ enum Match {
         }
     }
 
-    /// Quoted phrases stay one term: `"fix search" claude`.
     private static func split(_ query: String) -> [String] {
         var terms: [String] = []
         var current = ""

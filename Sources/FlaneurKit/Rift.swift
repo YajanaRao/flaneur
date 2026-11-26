@@ -1,13 +1,10 @@
 import Foundation
 
-/// A rift window. Actions address it by its macOS window-server id — the one id every
-/// rift-cli window command accepts.
 public struct RiftWindow: Hashable, Sendable {
     public let id: Int
     public let app: String
     public let bundleID: String
     public let title: String
-    /// The window the user's cursor is in. An empty query does not put it first.
     public let focused: Bool
     public let workspace: Int
     public let workspaceName: String
@@ -26,17 +23,12 @@ public struct RiftWindow: Hashable, Sendable {
     }
 }
 
-/// A rift virtual workspace. Enter switches to it; empty ones stay out of the resting list.
 public struct RiftWorkspace: Hashable, Sendable {
     public let index: Int
     public let name: String
-    /// The workspace the user is on. An empty query does not put it first.
     public let focused: Bool
-    /// First window's bundle id, for the row icon.
     public let icon: String?
-    /// Distinct app names with a window here, in order.
     public let apps: [String]
-    /// Window titles, for subtitles and search.
     public let titles: [String]
 
     public init(
@@ -53,7 +45,6 @@ public struct RiftWorkspace: Hashable, Sendable {
     public var windowCount: Int { titles.count }
 }
 
-/// What one rift collect brings in: every workspace, and every window stamped with its workspace.
 public struct RiftListing: Sendable {
     public let workspaces: [RiftWorkspace]
     public let windows: [RiftWindow]
@@ -64,9 +55,6 @@ public struct RiftListing: Sendable {
     }
 }
 
-/// Rift, read-only: one `query workspaces` brings workspaces and their windows; actions
-/// are `execute` calls. The summon hotkey never touches rift — if rift is wedged these
-/// rows simply go away and everything else still lists.
 enum Rift {
     static let binary = "/opt/homebrew/bin/rift-cli"
     private static let timeout: Duration = .seconds(2)
@@ -84,7 +72,6 @@ enum Rift {
         _ = try await Shell.run(binary, ["execute", "window", "focus", "--window-server-id", String(id)], timeout: timeout)
     }
 
-    /// Move a window to a workspace without following it: the user stays where they are.
     static func move(window id: Int, toWorkspace index: Int) async throws {
         _ = try await Shell.run(
             binary, ["execute", "workspace", "move-window", String(index), String(id)],
@@ -92,7 +79,6 @@ enum Rift {
         )
     }
 
-    /// Fullscreen targets the focused window only, so focus first and then toggle.
     static func fullscreen(window id: Int) async throws {
         try await focus(window: id)
         _ = try await Shell.run(binary, ["execute", "window", "toggle-fullscreen"], timeout: timeout)
@@ -121,7 +107,6 @@ enum Rift {
     }
 
     enum RestartError: Error, Sendable {
-        /// No launchd job manages rift: it was started by hand, so nothing can re-run it.
         case unsupervised
     }
 

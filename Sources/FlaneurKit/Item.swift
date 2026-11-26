@@ -17,9 +17,7 @@ enum Terminal {
 enum RowIcon: Hashable, Sendable {
     case file(String)
     case application(String)
-    /// An SF Symbol by name, for rows with no app behind them.
     case symbol(String)
-    /// A vector image bundled in Contents/Resources, without its extension.
     case bundled(String)
     /// Bytes of a favicon. `fallback` is the app icon when the bytes do not decode.
     case picture(Data, fallback: String)
@@ -55,13 +53,9 @@ public enum Browser: String, CaseIterable, Hashable, Sendable {
 }
 
 public enum HerdrKind: Hashable, Sendable {
-    /// One row per agent. Enter focuses that agent.
     case agent
-    /// A tab with no agent.
     case tab
-    /// A pane given its own name. Enter focuses that pane.
     case named
-    /// Shown when the session has more than one workspace.
     case workspace
 }
 
@@ -72,11 +66,9 @@ public struct HerdrPane: Hashable, Sendable {
     public let subtitle: String
     public let agent: Bool
     public let status: String
-    /// The Herdr row the session is already on. An empty query does not put it first.
     public let focused: Bool
     public let kind: HerdrKind
     public let workspaceID: String
-    /// Searchable text that is not already the title, subtitle, or badge.
     public let terms: [String]
 
     public init(
@@ -96,7 +88,6 @@ public struct HerdrPane: Hashable, Sendable {
     }
 }
 
-/// One block in a Rex window. Enter focuses the block; its window follows.
 public struct RexBlock: Hashable, Sendable {
     public let blockID: String
     public let windowID: String
@@ -104,9 +95,7 @@ public struct RexBlock: Hashable, Sendable {
     public let label: String
     public let windowLabel: String
     public let sessionLabel: String
-    /// The block the user's cursor is in. An empty query does not put it first.
     public let focused: Bool
-    /// Keeps running outside any window. Enter shows its session; there is no pane to focus.
     public let detached: Bool
 
     public init(
@@ -124,7 +113,6 @@ public struct RexBlock: Hashable, Sendable {
     }
 }
 
-/// One Rex session — a workspace of tabs. Enter shows it in the app.
 public struct RexSession: Hashable, Sendable {
     public let sessionID: String
     public let label: String
@@ -137,7 +125,6 @@ public struct RexSession: Hashable, Sendable {
     }
 }
 
-/// What one rex collect brings in: every session, and every block including detached ones.
 public struct RexListing: Sendable {
     public let sessions: [RexSession]
     public let blocks: [RexBlock]
@@ -148,15 +135,12 @@ public struct RexListing: Sendable {
     }
 }
 
-/// A `desktop_notification` from a program in a rex terminal (OSC 9/777). One unread row
-/// in the panel plus a banner; Enter focuses the block and forgets the notice.
 public struct RexNotice: Hashable, Sendable {
     public let id: String
     public let blockID: String
     public let sessionID: String
     public let sessionLabel: String
     public let title: String
-    /// Empty when the sender gave only one line (OSC 9); it becomes the title.
     public let body: String
     public let date: Date
 
@@ -180,7 +164,6 @@ public struct BrowserTab: Hashable, Sendable {
     public let tabID: String
     public let title: String
     public let url: String
-    /// Favicon from the browser's own store, when it has one for this page.
     public let favicon: Data?
 
     public init(
@@ -199,15 +182,12 @@ public struct SlackMessage: Hashable, Sendable {
     public let team: String
     public let channel: String
     public let ts: String
-    /// "#channel", "DM", or the people in a group DM.
     public let place: String
     public let author: String
     public let text: String
-    /// First URL mentioned in the message body.
     public let link: URL?
     public let permalink: URL
     public let date: Date
-    /// Profile photo for a direct message. Channels keep the Slack icon.
     public let image: String?
 
     public init(
@@ -234,7 +214,6 @@ public struct SlackContact: Hashable, Sendable {
     public let handle: String
     public let title: String
     public let realName: String
-    /// Profile photo, when Slack has one.
     public let image: String?
 
     public init(
@@ -277,8 +256,6 @@ public struct AppEntry: Hashable, Sendable {
     }
 }
 
-/// One T3 Code thread — an agent conversation in a project. Enter opens it in the
-/// desktop app by deep link.
 public struct T3Thread: Hashable, Sendable {
     public let threadID: String
     public let environmentID: String
@@ -300,8 +277,6 @@ public struct T3Thread: Hashable, Sendable {
     }
 }
 
-/// A QuickTime Player command as a row. Static, not collected from anywhere — Enter
-/// runs the command.
 public struct Recording: Hashable, Sendable {
     public let title: String
     public let subtitle: String
@@ -322,44 +297,28 @@ public enum Action: Hashable, Sendable {
     case folder(URL)
     case githubWorkflow(project: ProjectFolder, workflow: Workflow, branch: String, inputs: [String: String])
     case slack(team: String, channel: String, ts: String)
-    /// Open the DM with this person, ready to type.
     case slackContact(team: String, user: String)
-    /// Open a channel, private channel, or group DM.
     case slackGroup(team: String, channel: String)
-    /// Open in the default browser.
     case link(URL)
     case closeHerdr(TabID)
     case closeBrowser(Browser, windowID: String, tabID: String)
-    case rexBlock(blockID: String, sessionID: String, windowID: String)
+    case rexBlock(blockID: String, sessionID: String, windowID: String?)
     case rexSession(sessionID: String)
     case closeRex(blockID: String)
-    /// Open a T3 Code thread in the desktop app: t3code://threads/<environment>/<thread>.
     case t3Thread(environmentID: String, threadID: String)
-    /// ⌘W on a notification row: forget the notice. The block it came from stays open.
     case dismissNotice(String)
-    /// QuickTime Player: File ▸ New Screen Recording (⌃⌘N).
     case screenRecording
-    /// Switch to a rift workspace.
     case riftWorkspace(index: Int)
     /// Focus a rift window; its workspace follows. Falls back to activating the app.
     case riftWindow(RiftWindow)
-    /// ⌘1…0 on a rift window row: move it to that workspace. The user stays put.
     case riftMove(windowID: Int, workspace: Int)
-    /// ⌃F on a rift window row: focus it and toggle true fullscreen.
     case riftFullscreen(RiftWindow)
-    /// ⌘W on a rift window row: close the window. The panel stays open.
     case riftClose(windowID: Int)
-    /// ⌃⇧Q on a running app's row.
     case quitApp(URL)
-    /// ⌘R on a running app's row: terminate, wait for exit, relaunch.
     case restartApp(URL)
-    /// Restart the rift launchd service, re-adopting every window.
     case riftRestart
 }
 
-/// One thing a row can do, as data: the chord that fires it, the title and key label
-/// the footer (and a future actions menu) show, what to run, and what the panel does
-/// after. Keys never name implementations; actions never hardcode keys.
 public struct ItemAction: Hashable, Sendable {
     public enum Chord: Hashable, Sendable {
         case enter, open, yank, close, quit, restart, fullscreen, runWorkflow
@@ -367,17 +326,13 @@ public struct ItemAction: Hashable, Sendable {
     }
 
     public enum Exit: Hashable, Sendable {
-        /// The panel stays up (⌘W close: the row drops, collection continues).
         case stay
-        /// Go somewhere: close without restoring focus.
         case dismiss
-        /// Copy or move something, then hand focus back to what you were doing.
         case dismissRestore
     }
 
     public enum Run: Hashable, Sendable {
         case perform(Action)
-        /// A pasteboard write: clipboard copies and link yanks.
         case copy(String)
         case startWorkflow(ProjectFolder)
         case chooseWorkflow(Workflow)
@@ -390,7 +345,6 @@ public struct ItemAction: Hashable, Sendable {
     public let keyLabel: String
     public let run: Run
     public let exit: Exit
-    /// Opening counts as use for frecency; quitting or closing something does not.
     public let tracksUse: Bool
 
     public init(
@@ -431,8 +385,6 @@ public enum Item: Hashable, Sendable, Identifiable {
     case clip(Clip)
     case riftWindow(RiftWindow)
     case riftWorkspace(RiftWorkspace)
-    /// The rift service as a command row: restart re-adopts every window when rift's
-    /// event pipeline has silently died. Search-only, like the Screen Recording row.
     case riftService
 
     public var id: ID {
@@ -539,7 +491,6 @@ public enum Item: Hashable, Sendable, Identifiable {
         case .t3(let thread):
             thread.title.isEmpty ? "thread" : thread.title
         case .clip(let clip):
-            // One line on the row no matter how many were copied.
             String(
                 clip.text
                     .components(separatedBy: .whitespacesAndNewlines)
@@ -601,8 +552,6 @@ public enum Item: Hashable, Sendable, Identifiable {
         case .t3:
             .application(T3Code.bundleID)
         case .clip:
-            // A clip's icon says what it is, never where it came from (tinycast keeps
-            // the source app in the details panel, not on the row).
             .symbol("doc.on.clipboard")
         case .riftWindow(let window):
             .application(window.bundleID)
@@ -617,9 +566,7 @@ public enum Item: Hashable, Sendable, Identifiable {
         }
     }
 
-    /// Lower comes first when nothing else distinguishes the row. Blocked is waiting on you, done is finished work to look at.
     var attention: Int {
-        // An unread notification is waiting on you, the same as a blocked agent.
         if case .notice = self { return 0 }
         guard case .pane(let pane) = self else { return 2 }
         if pane.kind == .workspace { return 3 }
@@ -670,7 +617,6 @@ public enum Item: Hashable, Sendable, Identifiable {
         }
     }
 
-    /// What ⌃O opens and ⌃Y copies. Prefers a link inside a message over the message itself.
     public var link: URL? {
         switch self {
         case .message(let message):
@@ -688,7 +634,6 @@ public enum Item: Hashable, Sendable, Identifiable {
         }
     }
 
-    /// Each query term has to match one of these on its own. Title hits outrank the rest.
     var searchFields: [SearchField] {
         var fields: [SearchField] = []
         func add(_ text: String, _ role: SearchField.Role) {
@@ -706,8 +651,6 @@ public enum Item: Hashable, Sendable, Identifiable {
         return fields
     }
 
-    /// Hidden words. "slack" finds every unread message; a Herdr cwd stays findable when the
-    /// row is showing the task summary instead.
     var extraTerms: [String] {
         switch self {
         case .pane(let pane):
@@ -727,14 +670,10 @@ public enum Item: Hashable, Sendable, Identifiable {
         case .recording:
             return ["capture"]
         case .t3(let thread):
-            // "t3" names every thread the way "slack" names every message.
             return ["t3", "t3code", thread.branch]
         case .clip(let clip):
-            // "clip" lists the whole history the way "slack" lists every message; the
-            // source app is a search word ("slack" finds what you copied in Slack).
             return ["clip", "clipboard"] + (clip.sourceName.map { [$0] } ?? [])
         case .riftWindow(let window):
-            // The workspace number finds its windows: "9" or "workspace 9".
             return ["rift", window.app, window.workspaceName, "workspace \(window.workspaceName)"]
         case .riftWorkspace(let workspace):
             return ["rift", "workspace", "workspace \(workspace.name)"] + workspace.apps + workspace.titles
@@ -840,7 +779,6 @@ public enum Item: Hashable, Sendable, Identifiable {
         }
     }
 
-    /// ⌘W. Browser tabs, Herdr tabs and Rex blocks only; apps and Slack messages stay put.
     public var close: Action? {
         switch self {
         case .pane(let pane):
@@ -861,8 +799,6 @@ public enum Item: Hashable, Sendable, Identifiable {
         }
     }
 
-    /// The row's primary (↵) action. `actions` prepends it to the extras. Nil for clips:
-    /// theirs is a pasteboard write (Run.copy), not a performed action.
     var primary: Action? {
         switch self {
         case .pane(let pane):
@@ -873,12 +809,11 @@ public enum Item: Hashable, Sendable, Identifiable {
             case .workspace: .herdrWorkspace(pane.workspaceID)
             }
         case .rex(let block):
-            .rexBlock(blockID: block.blockID, sessionID: block.sessionID, windowID: block.windowID)
+            .rexBlock(blockID: block.blockID, sessionID: block.sessionID, windowID: block.windowID.isEmpty ? nil : block.windowID)
         case .rexSession(let session):
             .rexSession(sessionID: session.sessionID)
         case .notice(let notice):
-            // The window is unknown from an event; block focus finds it.
-            .rexBlock(blockID: notice.blockID, sessionID: notice.sessionID, windowID: "")
+            .rexBlock(blockID: notice.blockID, sessionID: notice.sessionID, windowID: nil)
         case .message(let message):
             .slack(team: message.team, channel: message.channel, ts: message.ts)
         case .contact(let contact):
@@ -922,19 +857,14 @@ public enum Item: Hashable, Sendable, Identifiable {
 
     private var enterExit: ItemAction.Exit {
         switch self {
-        // Rift re-tiles around you; the fix shouldn't move your focus.
         case .riftService: .dismissRestore
         default: .dismiss
         }
     }
 
-    /// Every chord this row answers, primary (↵) first. Key dispatch and the footer hint
-    /// both read this list, so adding an action is appending an entry here and nothing else.
     public var actions: [ItemAction] {
         var list: [ItemAction] = []
         if case .clip(let clip) = self {
-            // History is strict MRU: opening a clip never boosts it. Re-copying re-lands
-            // it on top via the monitor's own capture, so time stays the ranking.
             list.append(ItemAction(chord: .enter, title: enterTitle, keyLabel: "↵", run: .copy(clip.text), exit: .dismissRestore, tracksUse: false))
         } else if case .workflow(let workflow) = self {
             list.append(ItemAction(chord: .enter, title: "Select Workflow", keyLabel: "↵", run: .chooseWorkflow(workflow), exit: .stay, tracksUse: false))
@@ -998,7 +928,6 @@ public enum Item: Hashable, Sendable, Identifiable {
         return false
     }
 
-    /// The collector this row came from.
     var source: Source {
         switch self {
         case .pane: .herdr

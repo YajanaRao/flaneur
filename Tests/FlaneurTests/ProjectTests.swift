@@ -137,7 +137,7 @@ struct ProjectTests {
         _ = state.handle(.query("bento"))
 
         #expect(state.handle(.runWorkflow) == [])
-        #expect(state.phase == .visible(.holding))
+        #expect(state.phase == .visible(.settling))
         #expect(state.rows.map(\.title) == ["CI"])
         #expect(state.prompt == "bento · Select workflow")
 

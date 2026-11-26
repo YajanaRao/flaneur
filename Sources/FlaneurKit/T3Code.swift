@@ -2,10 +2,6 @@ import AppKit
 import Foundation
 import SQLite3
 
-/// T3 Code threads, read from the server's own state database. The desktop app keeps
-/// its truth in `~/.t3/userdata/statev2.sqlite` (WAL); reading it read-only is the same
-/// trick Favicons plays on Chromium. Enter deep-links into the desktop app:
-/// `t3code://threads/<environment>/<thread>` routes to the thread while the app runs.
 enum T3Code {
     static let bundleID = "com.t3tools.t3code"
     private static let limit = 30
@@ -14,9 +10,6 @@ enum T3Code {
         URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent(".t3/userdata")
     }
 
-    /// Newest threads across every project. An uninstalled app or a never-run server is
-    /// an empty list, not a failure — the same as a browser that is not running. A schema
-    /// the query no longer understands is a failure: flaneur needs an update then.
     static func collect() async throws -> [T3Thread] {
         guard await installed() else { return [] }
         let database = userdata.appendingPathComponent("statev2.sqlite").path
@@ -59,7 +52,6 @@ enum T3Code {
         }
     }
 
-    /// The query, split out so tests can point it at a throwaway database.
     static func threads(database path: String, environmentID: String) throws -> [T3Thread] {
         guard let database = open(path) else { throw CollectFailure.unavailable }
         defer { sqlite3_close(database) }

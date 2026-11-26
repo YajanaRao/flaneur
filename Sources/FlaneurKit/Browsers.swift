@@ -40,7 +40,6 @@ enum Browsers {
         try await Apps.activate(bundleID: browser.bundleID)
     }
 
-    /// Closes the tab and leaves the browser where it is. The panel stays in front.
     static func close(_ browser: Browser, windowID: String, tabID: String) async throws {
         guard await isRunning(browser) else { throw ActivationError.notRunning }
         _ = try await Shell.run(

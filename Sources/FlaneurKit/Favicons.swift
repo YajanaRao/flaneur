@@ -2,7 +2,6 @@ import Foundation
 import SQLite3
 
 enum Favicons {
-    /// Pages the browser has already drawn. The exact URL wins; otherwise the site origin.
     static func lookupKeys(_ urlString: String) -> [String] {
         guard var parts = URLComponents(string: urlString),
               let scheme = parts.scheme?.lowercased(),
@@ -71,7 +70,6 @@ enum Favicons {
         return image(forPage: urlString, statement: statement, found: &found, missing: &missing)
     }
 
-    /// A tiny Favicons database for tests. `pages` maps a page URL to bitmap bytes at 32px.
     static func makeTestDatabase(at path: String, pages: [String: Data]) throws {
         var database: OpaquePointer?
         if sqlite3_open(path, &database) != SQLITE_OK {

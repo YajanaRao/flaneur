@@ -1,15 +1,10 @@
 import Foundation
 
-/// Tabs and apps opened from the panel, ranked zoxide-style: every open adds 10 to
-/// an entry's score, and when the scores total over the budget they all age by 0.9
-/// and the faint ones (under 1) fall off. Often-used rows stay on top; one-offs fade.
-/// A missing or unreadable file is an empty list: the launcher still opens.
 struct Recents: Equatable, Sendable {
     struct Entry: Equatable, Sendable, Codable {
         var key: String
         var title: String
         var score: Double
-        /// Last use, seconds since 1970. Breaks score ties in favor of the newer row.
         var at: Double
 
         init(key: String, title: String, score: Double, at: Double) {
@@ -32,10 +27,8 @@ struct Recents: Equatable, Sendable {
 
     private static let budget = 10_000.0
 
-    /// Sorted by score, then by recency: rank 0 is the row to offer first.
     private(set) var entries: [Entry] = []
 
-    /// 0 is the highest scored. A changed Herdr id still matches a row with the same title.
     func rank(key: String, title: String) -> Int? {
         if let index = entries.firstIndex(where: { $0.key == key }) { return index }
         guard !title.isEmpty else { return nil }
@@ -58,7 +51,6 @@ struct Recents: Equatable, Sendable {
         }
     }
 
-    /// Past the budget, every score decays by 0.9 and entries under 1 fall off.
     private mutating func ageIfNeeded() {
         guard entries.reduce(0, { $0 + $1.score }) > Self.budget else { return }
         entries = entries.map { entry in
@@ -80,8 +72,7 @@ struct Recents: Equatable, Sendable {
         for entry in stored.entries where !entry.key.isEmpty {
             recents.entries.append(entry)
         }
-        // A version-1 file has no scores: its order was the ranking, so seed scores from it.
-        if recents.entries.allSatisfy({ $0.score == 0 }) {
+        if stored.version == 1 {
             for (index, _) in recents.entries.enumerated() {
                 recents.entries[index].score = Double(recents.entries.count - index)
             }

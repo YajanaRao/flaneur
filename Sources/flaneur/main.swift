@@ -29,8 +29,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
     func applicationDidFinishLaunching(_ notification: Notification) {
         enableLoginItem()
         startNotices()
-        // The pasteboard only holds the latest copy, so history must be captured
-        // while the panel is closed, not collected on show.
         ClipboardMonitor.shared.start()
         Task { await Projects.warm() }
         do {
@@ -61,8 +59,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
         launcher.send(.resigned)
     }
 
-    /// Rex desktop notifications: an unread row in the panel, plus a banner that
-    /// focuses the block when clicked. Denied permission only costs the banner.
     private func startNotices() {
         let center = UNUserNotificationCenter.current()
         center.delegate = self

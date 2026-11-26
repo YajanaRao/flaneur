@@ -75,7 +75,6 @@ public enum CollectFailure: Error, Equatable, Hashable, Sendable {
 public enum Snapshot: Sendable {
     case panes(Result<[HerdrPane], CollectFailure>)
     case blocks(Result<RexListing, CollectFailure>)
-    /// The restart row rides along even on failure: rift down is when you want it.
     case riftLayout(Result<RiftListing, CollectFailure>, restartable: Bool)
     case t3Threads(Result<[T3Thread], CollectFailure>)
     case messages(Result<[SlackMessage], CollectFailure>)
@@ -85,7 +84,6 @@ public enum Snapshot: Sendable {
     case apps([AppEntry])
     case projects([ProjectFolder])
     case recordings([Recording])
-    /// A read of the history the monitor keeps warm. In memory, so it cannot fail.
     case clips([Clip])
 }
 
@@ -93,15 +91,6 @@ public enum Direction: Sendable {
     case up, down
 }
 
-/// A single-letter query previews a source — snacks.picker's leader-key pickers adapted to a
-/// field that is always in insert mode. A one-letter global search is useless, so `c` alone
-/// lists clips; the next letter returns to normal filtering (`ca` is just "ca"). `c` or `g`
-/// followed by Space commits that page and consumes the prefix, leaving an empty scoped query.
-/// A sticky variant also remains: `,c slack` searches clips for "slack".
-///
-/// `c` clips · `w` rift workspaces/windows · `a` apps · `t` browser tabs · `b` brave ·
-/// `y` yab · `h` herdr · `r` rex · `n` notifications · `s` slack · `3` t3 ·
-/// `g` GitHub repositories. Purely derived from the query; delete to leave.
 public enum QueryScope: String, Sendable {
     case clips = "c"
     case workspaces = "w"
@@ -117,7 +106,6 @@ public enum QueryScope: String, Sendable {
     case gitHub = "g"
 
     static func parse(_ query: String) -> (scope: QueryScope?, text: String) {
-        // The bare letter is the picker; nothing global is lost at one character.
         if query.count == 1, let scope = QueryScope(rawValue: query) {
             return (scope, "")
         }
@@ -140,7 +128,6 @@ public enum QueryScope: String, Sendable {
         case .yab: return source == .browser(.yab)
         case .herdr: return source == .herdr
         case .rex: return source == .rex
-        // Notices are item-level: their source is .rex, but `,r` is every block.
         case .notifications: if case .notice = item { return true } else { return false }
         case .slack: return [.slack, .contacts, .groups].contains(source)
         case .t3: return source == .t3
@@ -160,7 +147,7 @@ public enum Event: Sendable {
     case open
     /// ⌃Y — copy the selected row's link.
     case yank
-    /// ⌘W — close the selected browser or Herdr tab. The panel stays up.
+    /// ⌘W — close the selected tab, window, or block. The panel stays up.
     case close
     /// ⌘1…0 — move the selected rift window to that workspace. The panel closes; focus stays.
     case moveWindow(Int)
@@ -179,11 +166,11 @@ public enum Event: Sendable {
     case escape
     case backspace
     case resigned
-    case armResign
+    case settled
     case collected(Source, generation: Int, Snapshot)
     /// Rows from a collect that is still running. Does not finish that collect.
     case updated(Source, generation: Int, Snapshot)
-    case activationFinished(generation: Int)
+    case activationFailed(generation: Int)
     /// A rex desktop notification arrived. Lands as an unread row, panel open or not.
     case noticed(RexNotice)
     /// The banner was clicked in Notification Center: open the block, forget the notice.
@@ -199,7 +186,7 @@ public enum Effect: Equatable, Sendable {
 }
 
 public enum ResignArm: Equatable, Sendable {
-    case holding, live
+    case settling, live
 }
 
 public enum Phase: Equatable, Sendable {
@@ -231,17 +218,13 @@ public struct LauncherState: Sendable {
     public private(set) var query = ""
     private var storedSelection: Selection = .top
     private var slots: [Source: Slot] = [:]
-    /// Unread rex notifications. Pushed, not collected: they survive panel shows until read.
     private var notices: [RexNotice] = []
     private var inFlight: Set<Source> = []
-    /// Tabs closed while this panel is open. A collect that started earlier must not put them back.
     private var closed: Set<Closed> = []
     private var workflowRun: WorkflowRunState?
-    /// A committed source page. Its query never contains the prefix that opened it.
     private var activeScope: QueryScope?
 
     fileprivate var recents: Recents
-    /// Resolved bundle URL of the app the panel was summoned over.
     private var frontmost: URL? = nil
 
     init(recents: Recents = Recents()) {
@@ -306,22 +289,18 @@ public struct LauncherState: Sendable {
 
     public var failures: [String] {
         Source.allCases.compactMap { source in
-            // herdr is silent when it is down: its rows simply stay away.
             if source == .herdr { return nil }
             guard let failure = slots[source]?.failure else { return nil }
             return "\(source.name) \(failure.summary)"
         }
     }
 
-    /// One footer pill: the action's title and its key, tinycast's `Open Application ↵`.
     public struct FooterItem: Equatable, Sendable, Identifiable {
         public let title: String
         public let keyLabel: String
         public var id: String { title }
     }
 
-    /// The selected row's actions as footer pills — primary (↵) first, extras after, the
-    /// ten window moves collapsed into one. Ends with ⌃U clear while there is a query.
     public var footer: [FooterItem] {
         var items: [FooterItem] = []
         if let item = selectedItem(in: rankedItems()) {
@@ -357,8 +336,8 @@ public struct LauncherState: Sendable {
         case .resigned:
             guard case .visible(.live) = phase else { return [] }
             return hide(restoreFocus: false)
-        case .armResign:
-            guard case .visible(.holding) = phase else { return [] }
+        case .settled:
+            guard case .visible(.settling) = phase else { return [] }
             phase = .visible(.live)
             return []
         case .query(let text):
@@ -406,7 +385,6 @@ public struct LauncherState: Sendable {
             let items = rankedItems()
             guard let item = selectedItem(in: items), let action = item.close else { return [] }
             let index = items.firstIndex { $0.id == item.id } ?? 0
-            // Dismissing a notification touches nothing outside the panel.
             if case .notice(let notice) = item {
                 notices.removeAll { $0.id == notice.id }
                 let rest = rankedItems()
@@ -456,8 +434,7 @@ public struct LauncherState: Sendable {
             if let stored = slots[source]?.generation, generation < stored { return [] }
             apply(source, generation: generation, snapshot: snapshot)
             return []
-        case .activationFinished(let finished):
-            // A failed activation must not summon again. Same generation only, so a newer panel stays.
+        case .activationFailed(let finished):
             guard case .hidden = phase, finished == generation else { return [] }
             return [.dismiss(restoreFocus: true)]
         case .noticed(let notice):
@@ -468,18 +445,15 @@ public struct LauncherState: Sendable {
         case .noticeOpened(let id):
             guard let notice = notices.first(where: { $0.id == id }) else { return [] }
             notices.removeAll { $0.id == id }
-            return [.perform(.rexBlock(blockID: notice.blockID, sessionID: notice.sessionID, windowID: ""), generation: generation)]
+            return [.perform(.rexBlock(blockID: notice.blockID, sessionID: notice.sessionID, windowID: nil), generation: generation)]
         }
     }
 
-    /// Run the selected row's action for a chord. The row's `actions` list is the whole
-    /// truth: a chord the row doesn't answer does nothing.
     private mutating func act(_ chord: ItemAction.Chord) -> [Effect] {
         guard case .visible = phase else { return [] }
         guard let item = selectedItem(in: rankedItems()),
               let action = item.actions.first(where: { $0.chord == chord })
         else { return [] }
-        // Opening a notification reads it; everything else comes back next collect.
         if case .notice(let notice) = item, chord == .enter {
             notices.removeAll { $0.id == notice.id }
         }
@@ -533,11 +507,9 @@ public struct LauncherState: Sendable {
         case .stay:
             return effects
         case .dismiss:
-            // Going somewhere: hide first, then act.
             phase = .hidden
             return [.dismiss(restoreFocus: false)] + effects
         case .dismissRestore:
-            // A copy or a move hands focus back: the next thing is pasting or working on.
             phase = .hidden
             return effects + [.dismiss(restoreFocus: true)]
         }
@@ -607,7 +579,7 @@ public struct LauncherState: Sendable {
         storedSelection = .top
         closed = []
         frontmost = nil
-        phase = .visible(.holding)
+        phase = .visible(.settling)
         let fresh = Source.allCases.filter { !inFlight.contains($0) }
         inFlight.formUnion(fresh)
         let generation = generation
@@ -696,17 +668,12 @@ public struct LauncherState: Sendable {
         let scope = activeScope ?? transientScope
         let text = activeScope == nil ? scopeText : query
         if let scope {
-            // A scope listing ignores the resting exclusions: `,w` shows empty
-            // workspaces, `,c` shows every clip. Natural order when no text follows.
             let pool = items.filter { scope.contains($0) }
             guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
                 return pool.prefix(Match.limit).map { Ranking(item: $0) }
             }
             return Match.rank(text, pool) { self.rank(of: $0) }
         }
-        // The directory is for finding a person, and a command row or a clip is not
-        // part of the working set either. Nor is an empty workspace — there is nothing
-        // to go to. An empty field stays the working set.
         let searching = !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         let pool = searching
             ? items.filter {
@@ -778,13 +745,11 @@ public struct LauncherState: Sendable {
         return items
     }
 
-    private func rank(of item: Item) -> Int {
-        // History ranks by time alone; older builds may hold clip recents — ignore them.
-        if case .clip = item { return Int.max }
-        return recents.rank(key: item.recentKey, title: item.title) ?? Int.max
+    private func rank(of item: Item) -> Int? {
+        if case .clip = item { return nil }
+        return recents.rank(key: item.recentKey, title: item.title)
     }
 
-    /// Recents first, then blocked and done, and the row you are already on is never first.
     private func resting(_ pool: [Item]) -> [Item] {
         var recent: [(Int, Item)] = []
         var rest: [Item] = []
@@ -912,9 +877,8 @@ public final class Launcher {
             _ = state.handle(.frontmost(Apps.frontmostURL()))
             theme = Theme.load()
             panelIfNeeded().present()
-            // Activation inside present can resign before this turn ends. Stay .holding until the next one.
             Task { @MainActor [weak self] in
-                self?.send(.armResign)
+                self?.send(.settled)
             }
         case .dismiss(let restoreFocus):
             panel?.dismiss(restoreFocus: restoreFocus)
@@ -931,7 +895,7 @@ public final class Launcher {
                     try await perform(action)
                 } catch {
                     FileHandle.standardError.write(Data("flaneur: activation failed: \(error)\n".utf8))
-                    self.send(.activationFinished(generation: generation))
+                    self.send(.activationFailed(generation: generation))
                 }
             }
         case .copy(let text):
@@ -956,6 +920,7 @@ public final class Launcher {
             case .moveWindow(let index): self.send(.moveWindow(index))
             case .fullscreen: self.send(.fullscreen)
             case .quit: self.send(.quit)
+            case .quitFlaneur: NSApp.terminate(nil)
             case .restart: self.send(.restart)
             case .runWorkflow: self.send(.runWorkflow)
             case .clear: self.send(.clearLine)
@@ -1037,7 +1002,6 @@ private func collectPayload(
     case .quickTime:
         return .recordings(await QuickTime.collect())
     case .clipboard:
-        // The monitor captures while the panel is closed; a collect is just a read.
         return .clips(await ClipboardMonitor.shared.entries)
     }
 }
@@ -1057,8 +1021,6 @@ private func perform(_ action: Action) async throws {
     case .riftWorkspace(let index):
         try await Rift.focus(workspace: index)
     case .riftWindow(let window):
-        // Rift focus lands on the exact window (a Ghostty tab is its own window);
-        // if rift died between collect and Enter, activating the app still helps.
         do {
             try await Rift.focus(window: window.id)
         } catch {
@@ -1076,7 +1038,6 @@ private func perform(_ action: Action) async throws {
     case .t3Thread(let environmentID, let threadID):
         try await T3Code.focus(environmentID: environmentID, threadID: threadID)
     case .dismissNotice:
-        // The state already forgot the notice; nothing outside the panel to do.
         break
     case .browser(let browser, let windowID, let tabID):
         try await Browsers.select(browser, windowID: windowID, tabID: tabID)

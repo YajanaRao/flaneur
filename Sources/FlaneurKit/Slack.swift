@@ -1,7 +1,6 @@
 import Foundation
 import Security
 
-/// Generic password in the login keychain (`~/Library/Keychains/login.keychain-db`).
 enum Keychain {
     static func password(service: String) -> String? {
         let query: [String: Any] = [
@@ -30,11 +29,8 @@ enum Keychain {
 /// each conversation updates the list as soon as Slack answers it.
 enum Slack {
     static let bundleID = "com.tinyspeck.slackmacgap"
-    /// `security add-generic-password -s flaneur-slack -a "$USER" -w 'xoxp-…'`
     static let keychainService = "flaneur-slack"
-    /// Names change rarely. The directory is not refetched on every panel open.
     static let directoryFreshFor: Duration = .seconds(600)
-    /// Whole-refresh budget. Past it, the previous snapshot is served.
     static let budget: Duration = .seconds(20)
     static let perConversation = 5
     static let concurrency = 4
@@ -51,7 +47,6 @@ enum Slack {
         try await Cache.shared.groups()
     }
 
-    /// Deep link into Slack.app at the message.
     static func open(team: String, channel: String, ts: String) async throws {
         var components = URLComponents()
         components.scheme = "slack"
@@ -65,7 +60,6 @@ enum Slack {
         try await Links.open(url)
     }
 
-    /// Opens the DM with this person, with the composer ready.
     static func open(team: String, user: String) async throws {
         var components = URLComponents()
         components.scheme = "slack"
@@ -78,7 +72,6 @@ enum Slack {
         try await Links.open(url)
     }
 
-    /// Opens a channel, private channel, or group DM.
     static func open(team: String, channel: String) async throws {
         var components = URLComponents()
         components.scheme = "slack"
@@ -198,7 +191,6 @@ enum Slack {
         .sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
     }
 
-    /// Drops bots, deactivated accounts, and the caller. Display name, then real name, then handle.
     private static func people(_ members: [DirectoryMember], team: String, selfID: String) -> [SlackContact] {
         members.compactMap { member in
             if member.id == selfID || member.id == "USLACKBOT" { return nil }
@@ -224,18 +216,13 @@ enum Slack {
         .sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
     }
 
-    // MARK: - Fetching
-
     private actor Cache {
         static let shared = Cache()
 
         private var cached: [SlackMessage] = []
-        /// An empty scan that hit the rate limit must not stick. Retry after this instead.
         private var hold: ContinuousClock.Instant?
         private var refresh: Task<([SlackMessage], Bool), Error>?
-        /// User ID → display name. Users rarely rename; this lives for the process.
         private var names: [String: String] = [:]
-        /// User ID → profile photo. Filled alongside the name.
         private var images: [String: String] = [:]
         private var directory: [SlackContact] = []
         private var directoryFetched: ContinuousClock.Instant?
@@ -343,7 +330,6 @@ enum Slack {
             )
         }
 
-        /// `directHistory` skips `conversations.info` for ids whose read cursor already came from counts.
         private func drain(
             _ conversations: [ConversationWire],
             directHistory: [String: String],
@@ -410,8 +396,6 @@ enum Slack {
             }
         }
 
-        /// A scanned conversation replaces its cached rows. A skipped one keeps them, so a rate
-        /// limit does not wipe a message the next batch has not reached yet.
         private func incorporating(
             _ base: [SlackMessage],
             conversations: [ConversationWire],
@@ -472,8 +456,6 @@ enum Slack {
             cursor = page.response_metadata?.next_cursor
             if cursor?.isEmpty != false { break }
         }
-        // Channels omit unread metadata, so each one costs a history call. Scan them before
-        // the long tail of DMs and group DMs, which are decided by conversations.info alone.
         return all.sorted { Slack.scanRank($0) < Slack.scanRank($1) }
     }
 
@@ -497,7 +479,6 @@ enum Slack {
         return 0
     }
 
-    /// `.skipped` means Slack rate-limited or the budget ran out. That is not "no unread".
     private enum Unread: Sendable {
         case messages([MessageWire])
         case skipped
@@ -557,7 +538,6 @@ enum Slack {
         return Identity(name: name, image: picture(wire.user.profile?.image_72))
     }
 
-    /// Slack's CDN photo. Anything that is not https is ignored.
     static func picture(_ raw: String?) -> String? {
         let text = raw?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         guard let url = URL(string: text), url.scheme?.lowercased() == "https", url.host != nil else { return nil }
@@ -581,7 +561,6 @@ enum Slack {
         return ids
     }
 
-    /// Joins, leaves, pins and the like are unread too, but nobody wants to read them.
     private static func isConversational(_ message: MessageWire) -> Bool {
         guard let subtype = message.subtype else { return true }
         return ["bot_message", "file_share", "thread_broadcast", "me_message"].contains(subtype)
@@ -603,8 +582,6 @@ enum Slack {
         return probeWithoutLatest
     }
 
-    /// Conversations `client.counts` says are unread. `nil` when the payload is not that method's shape,
-    /// so a partial body is not treated as "everything is read".
     static func unreadTargets(counts json: Data) -> [UnreadTarget]? {
         guard let wire = try? JSONDecoder().decode(CountsWire.self, from: json),
               wire.channels != nil, wire.ims != nil, wire.mpims != nil
@@ -878,7 +855,6 @@ struct UnreadTarget: Equatable, Sendable {
     let kind: Kind
 }
 
-/// Runs `transform` over `items` with at most `limit` in flight, preserving order.
 private func mapLimited<T: Sendable, R: Sendable>(
     _ items: [T],
     limit: Int,

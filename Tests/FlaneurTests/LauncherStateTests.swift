@@ -134,7 +134,6 @@ struct LauncherStateTests {
         #expect(state.rows.map(\.subtitle) == ["bento · dev"])
         #expect(state.rows.map(\.icon) == [.application(T3Code.bundleID)])
 
-        // The hidden term finds every thread, as "slack" does for messages.
         _ = state.handle(.query("t3"))
         #expect(state.rows.count == 1)
         #expect(
@@ -186,7 +185,6 @@ struct LauncherStateTests {
         _ = state.handle(.collected(.apps, generation: 1, .apps([app])))
         #expect(state.rows.map(\.title) == ["Blocked", "Done", "Working", "Quiet", "Zed"])
 
-        // A typed query still prefers the better match. Attention only breaks a tie.
         let same = HerdrPane(pane: PaneID(raw: "p5"), tab: TabID(raw: "t5"), title: "notes", subtitle: "", agent: true, status: "working")
         let urgent = HerdrPane(pane: PaneID(raw: "p6"), tab: TabID(raw: "t6"), title: "notes", subtitle: "", agent: true, status: "blocked")
         let titled = AppEntry(url: URL(fileURLWithPath: "/Applications/Notes.app"), name: "notes", running: true)
@@ -206,18 +204,17 @@ struct LauncherStateTests {
         _ = state.handle(.collected(.apps, generation: 1, .apps([app])))
         _ = state.handle(.collected(.herdr, generation: 1, .panes(.failure(.unavailable))))
         #expect(state.rows.map(\.title) == ["Alpha"])
-        // herdr down is quiet: no rows, no footer complaint.
         #expect(state.failures.isEmpty)
     }
 
     @Test func resignWhileHoldingDoesNotHide() {
         var state = LauncherState()
         let effects = state.handle(.toggle)
-        #expect(state.phase == .visible(.holding))
+        #expect(state.phase == .visible(.settling))
         #expect(effects.first == .present)
         #expect(state.handle(.resigned) == [])
-        #expect(state.phase == .visible(.holding))
-        #expect(state.handle(.armResign) == [])
+        #expect(state.phase == .visible(.settling))
+        #expect(state.handle(.settled) == [])
         #expect(state.phase == .visible(.live))
         #expect(state.handle(.resigned) == [.dismiss(restoreFocus: false)])
         #expect(state.phase == .hidden)
@@ -228,7 +225,7 @@ struct LauncherStateTests {
         _ = state.handle(.toggle)
         #expect(state.handle(.escape) == [.dismiss(restoreFocus: true)])
         #expect(state.handle(.toggle) == [.present])
-        #expect(state.phase == .visible(.holding))
+        #expect(state.phase == .visible(.settling))
     }
 
     @Test func snapshotRowsUseTheTaskTitle() throws {
@@ -378,7 +375,6 @@ struct LauncherStateTests {
         #expect(theme.light.codes.accent == 0xABCDEF)
         #expect(theme.light.codes.background == Theme.defaults.light.codes.background)
         #expect(theme.light.codes.rule == Theme.defaults.light.codes.rule)
-        // Defaults mirror the Rex terminal: misty-forest dark, orchard-breeze light.
         #expect(Theme.defaults.dark.codes.background == 0x131A16)
         #expect(Theme.defaults.light.codes.onAccent == 0xF4F9EF)
     }
@@ -387,13 +383,13 @@ struct LauncherStateTests {
         var state = LauncherState()
         _ = state.handle(.toggle)
         _ = state.handle(.escape)
-        let effects = state.handle(.activationFinished(generation: 1))
+        let effects = state.handle(.activationFailed(generation: 1))
         #expect(!effects.contains { if case .present = $0 { return true }; return false })
         #expect(state.phase == .hidden)
         _ = state.handle(.toggle)
-        #expect(state.phase == .visible(.holding))
-        #expect(state.handle(.activationFinished(generation: 1)) == [])
-        #expect(state.phase == .visible(.holding))
+        #expect(state.phase == .visible(.settling))
+        #expect(state.handle(.activationFailed(generation: 1)) == [])
+        #expect(state.phase == .visible(.settling))
     }
 
     @Test func controlJAndKMoveLikeArrows() {
@@ -428,7 +424,7 @@ struct LauncherStateTests {
         #expect(state.query == "beta")
         #expect(state.footer.map(\.title) == ["Open", "Clear"])
         #expect(state.handle(.clearLine) == [])
-        #expect(state.phase == .visible(.holding))
+        #expect(state.phase == .visible(.settling))
         #expect(state.query == "")
         #expect(state.selection == .top)
         #expect(state.rows.first?.title == "Alpha")
@@ -449,7 +445,7 @@ struct LauncherStateTests {
 
         let effects = state.handle(.close)
         #expect(effects == [.perform(.closeHerdr(TabID(raw: "tab-a")), generation: 1)])
-        #expect(state.phase == .visible(.holding))
+        #expect(state.phase == .visible(.settling))
         #expect(state.rows.map(\.title) == ["Sibling", "SameTab", "First", "Second", "Alpha"])
 
         _ = state.handle(.move(.down))
@@ -459,7 +455,6 @@ struct LauncherStateTests {
 
         _ = state.handle(.close)
         #expect(state.rows.map(\.title) == ["Second", "Alpha"])
-        // A collect that was already in flight must not put the closed tab back.
         _ = state.handle(.collected(.browser(.brave), generation: 1, .tabs(.success([first, second]))))
         #expect(state.rows.map(\.title) == ["Second", "Alpha"])
 
@@ -488,7 +483,6 @@ struct LauncherStateTests {
         #expect(state.handle(.yank) == [.copy(link.absoluteString), .dismiss(restoreFocus: true)])
         #expect(state.phase == .hidden)
 
-        // Running apps carry Quit and Restart; a non-running one has neither.
         _ = state.handle(.toggle)
         _ = state.handle(.collected(.browser(.brave), generation: 3, .tabs(.success([tab]))))
         _ = state.handle(.collected(.apps, generation: 3, .apps([app])))
@@ -504,7 +498,6 @@ struct LauncherStateTests {
 
         _ = state.handle(.toggle)
         _ = state.handle(.collected(.apps, generation: 4, .apps([app])))
-        // The tab lingers from its last collect and outranks the app (recents): step onto Alpha.
         _ = state.handle(.move(.down))
         #expect(state.handle(.restart) == [
             .perform(.restartApp(app.url), generation: 4),
@@ -834,21 +827,18 @@ struct LauncherStateTests {
         #expect(loaded.rank(key: "pane:b", title: "") == 0)
         #expect(loaded.rank(key: "missing", title: "Alpha") == 1)
 
-        // Frecency: five uses outrank one newer use.
         var frecency = Recents()
         for _ in 0..<5 { frecency.touch(key: "daily", title: "") }
         frecency.touch(key: "scratch", title: "")
         #expect(frecency.rank(key: "daily", title: "") == 0)
         #expect(frecency.rank(key: "scratch", title: "") == 1)
 
-        // Aging: over the budget every score decays by 0.9; a single old visit falls off.
         var aged = Recents()
         aged.touch(key: "once", title: "")
         for _ in 0..<3_500 { aged.touch(key: "pump", title: "") }
         #expect(aged.rank(key: "once", title: "") == nil)
         #expect(aged.rank(key: "pump", title: "") == 0)
 
-        // A version-1 file (key and title only) keeps its order as the seed ranking.
         let legacy = """
         {"version":1,"entries":[{"key":"pane:a","title":"Alpha"},{"key":"pane:b","title":"Beta"}]}
         """
@@ -888,7 +878,6 @@ struct LauncherStateTests {
         }
         """
         let blocks = try Rex.rows(from: Data(json.utf8))
-        // A block in two layers lists once; a block with no label is a shell.
         #expect(blocks.map(\.label) == ["editor", "shell"])
         #expect(blocks.map(\.focused) == [true, false])
         #expect(blocks.first?.sessionLabel == "arid-oasis")
@@ -925,7 +914,6 @@ struct LauncherStateTests {
         _ = closing.handle(.collected(.rex, generation: 1, .blocks(.success(RexListing(sessions: [], blocks: [block])))))
         #expect(closing.handle(.close) == [.perform(.closeRex(blockID: "block:b1"), generation: 1)])
         #expect(closing.rows.isEmpty)
-        // A collect that was already in flight must not put the closed block back.
         _ = closing.handle(.collected(.rex, generation: 1, .blocks(.success(RexListing(sessions: [], blocks: [block])))))
         #expect(closing.rows.isEmpty)
     }
@@ -964,7 +952,7 @@ struct LauncherStateTests {
         #expect(Item.rexSession(session).primary == .rexSession(sessionID: "session:s1"))
         #expect(Item.rexSession(session).close == nil)
         #expect(Item.rexSession(session).searchFields.map(\.text).contains("rex"))
-        #expect(state.handle(.submit) == [.dismiss(restoreFocus: false), .perform(.rexBlock(blockID: "block:b9", sessionID: "session:s1", windowID: ""), generation: 1)])
+        #expect(state.handle(.submit) == [.dismiss(restoreFocus: false), .perform(.rexBlock(blockID: "block:b9", sessionID: "session:s1", windowID: nil), generation: 1)])
     }
 
     @Test func rexDesktopNotificationParsesIntoANotice() {
@@ -978,14 +966,12 @@ struct LauncherStateTests {
         #expect(notice?.sessionLabel == "arid-oasis")
         #expect(notice?.date == now)
 
-        // OSC 9 carries only a body; it becomes the title. An unknown session has no label.
         let osc9 = #"{"type":"session_event","payload":{"session_id":"session:s2","event":{"type":"block_event","payload":{"block_id":"block:b2","creator_name":"com.superlogical.terminal","name":"desktop_notification","payload":{"title":"","body":"needs attention"}}}}}"#
         let bare = RexEvents.notice(line: osc9, labels: [:])
         #expect(bare?.title == "needs attention")
         #expect(bare?.body == "")
         #expect(bare?.sessionLabel == "")
 
-        // Other events, however noisy, are not notices.
         let process = #"{"type":"session_event","payload":{"session_id":"session:s1","event":{"type":"block_event","payload":{"block_id":"block:b1","creator_name":"com.superlogical.terminal","name":"process_changed","payload":{"generation":2}}}}}"#
         #expect(RexEvents.notice(line: process, labels: [:]) == nil)
         #expect(RexEvents.notice(line: #"{"type":"client_left","payload":{"client_id":"client:c1"}}"#, labels: [:]) == nil)
@@ -1005,12 +991,9 @@ struct LauncherStateTests {
                 title: title, body: "exit 0", date: t0.addingTimeInterval(seconds)
             )
         }
-        // A double-emit (OSC 9 then OSC 777 for one alert) lands once.
         let first = dedupe.isDuplicate(notice("Build finished", at: 0))
         let repeated = dedupe.isDuplicate(notice("Build finished", at: 0.4))
-        // A different alert from the same block right away is not a repeat.
         let different = dedupe.isDuplicate(notice("Tests failed", at: 0.6))
-        // The same text again after the window is a fresh notification.
         let afterWindow = dedupe.isDuplicate(notice("Build finished", at: 4))
         #expect(!first)
         #expect(repeated)
@@ -1040,10 +1023,9 @@ struct LauncherStateTests {
         #expect(
             state.handle(.submit) == [
                 .dismiss(restoreFocus: false),
-                .perform(.rexBlock(blockID: "block:b1", sessionID: "session:s1", windowID: ""), generation: 1),
+                .perform(.rexBlock(blockID: "block:b1", sessionID: "session:s1", windowID: nil), generation: 1),
             ]
         )
-        // Read once: the notice is gone, the block it came from stays.
         #expect(state.rows.map(\.title) == ["editor"])
     }
 
@@ -1078,15 +1060,12 @@ struct LauncherStateTests {
         _ = state.handle(.toggle)
         _ = state.handle(.collected(.rex, generation: 1, .blocks(.success(RexListing(sessions: [], blocks: [block])))))
         _ = state.handle(.noticed(notice))
-        // Bare letter is the picker: notices only, never the rex blocks they came from.
         _ = state.handle(.query("n"))
         #expect(state.rows.map(\.title) == ["Build finished"])
-        // Sticky variant searches within notices.
         _ = state.handle(.query(",n build"))
         #expect(state.rows.map(\.title) == ["Build finished"])
         _ = state.handle(.query(",n nope"))
         #expect(state.rows.isEmpty)
-        // Back to global: one letter past the scope is an ordinary search.
         _ = state.handle(.query("no"))
         #expect(state.rows.map(\.title) == ["Build finished"])
     }
@@ -1100,10 +1079,9 @@ struct LauncherStateTests {
         _ = state.handle(.noticed(notice))
         #expect(
             state.handle(.noticeOpened("n1")) == [
-                .perform(.rexBlock(blockID: "block:b1", sessionID: "session:s1", windowID: ""), generation: 0)
+                .perform(.rexBlock(blockID: "block:b1", sessionID: "session:s1", windowID: nil), generation: 0)
             ]
         )
-        // A second click on the same banner finds nothing to open.
         #expect(state.handle(.noticeOpened("n1")) == [])
     }
 
@@ -1163,22 +1141,18 @@ struct LauncherStateTests {
         _ = state.handle(.collected(.clipboard, generation: 1, .clips([clip])))
         #expect(state.rows.isEmpty)
 
-        // Global content search never mixes copied text into object results.
         _ = state.handle(.query("token"))
         #expect(state.rows.isEmpty)
 
-        // The handoff is consumed: the scope owns the context, the input owns only the query.
         _ = state.handle(.query("c "))
         #expect(state.query == "")
         #expect(state.prompt == "Search clipboard")
         #expect(state.rows.map(\.title) == ["https://example.com/token"])
         _ = state.handle(.query("token"))
         #expect(state.rows.map(\.title) == ["https://example.com/token"])
-        // A clip's icon is always the clipboard glyph, never the source app.
         #expect(state.rows.map(\.icon) == [.symbol("doc.on.clipboard")])
         #expect(!state.rows.map(\.badge).isEmpty)
 
-        // Enter copies and hands focus back: the next thing after copying is pasting.
         #expect(state.handle(.submit) == [.copy("https://example.com/token"), .dismiss(restoreFocus: true)])
         #expect(state.phase == .hidden)
     }
@@ -1189,7 +1163,6 @@ struct LauncherStateTests {
         let clip = Clip(text: "first line\n\n  second line  ")
         _ = state.handle(.collected(.clipboard, generation: 1, .clips([clip])))
 
-        // "clip" names every clip inside the clipboard scope, not in global search.
         _ = state.handle(.query("clip"))
         #expect(state.rows.isEmpty)
         _ = state.handle(.query("c "))
@@ -1197,7 +1170,6 @@ struct LauncherStateTests {
         #expect(state.rows.map(\.title) == ["first line second line"])
         #expect(state.rows.map(\.icon) == [.symbol("doc.on.clipboard")])
 
-        // Opening a clip never reorders the history: no frecency boost, time ranks.
         _ = state.handle(.submit)
         _ = state.handle(.toggle)
         _ = state.handle(.collected(.clipboard, generation: 2, .clips([
@@ -1208,7 +1180,6 @@ struct LauncherStateTests {
         _ = state.handle(.query("clip"))
         #expect(state.rows.map(\.title) == ["fresher copy", "first line second line"])
 
-        // The source app is a search word, not an icon.
         var sourced = LauncherState()
         _ = sourced.handle(.toggle)
         _ = sourced.handle(.collected(.clipboard, generation: 1, .clips([
@@ -1230,12 +1201,10 @@ struct LauncherStateTests {
         clips.capture(text: "beta", source: "com.example.Beta")
         #expect(clips.entries.map(\.text) == ["beta", "alpha"])
 
-        // A re-copy bumps to the front and keeps its id, like one register yanked twice.
         let alphaID = clips.entries[1].id
         clips.capture(text: "alpha", source: nil)
         #expect(clips.entries.map(\.text) == ["alpha", "beta"])
         #expect(clips.entries[0].id == alphaID)
-        // A new copy of the same text keeps the source it was first attributed to.
         #expect(clips.entries[0].source == nil)
 
         for index in 0..<150 { clips.capture(text: "filler \(index)", source: nil) }
@@ -1260,17 +1229,14 @@ struct LauncherStateTests {
         monitor.poll(pasteboard)
         #expect(monitor.entries.map(\.text) == ["hello"])
 
-        // The same change count is the same copy.
         monitor.poll(pasteboard)
         #expect(monitor.entries.count == 1)
 
-        // Password managers tag their copies: those are never recorded.
         pasteboard.declareTypes([.string, NSPasteboard.PasteboardType("org.nspasteboard.ConcealedType")], owner: nil)
         pasteboard.setString("hunter2", forType: .string)
         monitor.poll(pasteboard)
         #expect(monitor.entries.map(\.text) == ["hello"])
 
-        // Whitespace alone is not a clip.
         pasteboard.clearContents()
         pasteboard.setString("  \n ", forType: .string)
         monitor.poll(pasteboard)
@@ -1336,13 +1302,10 @@ struct LauncherStateTests {
 
     @Test func riftRestingSkipsEmptyWorkspacesAndTheCurrentRowIsNotFirst() {
         var state = riftState()
-        // The focused workspace is empty: it drops out entirely. The focused window
-        // (Yab) is the row you are on, so it never leads — it sits just below.
         #expect(state.rows.map(\.title) == ["3 · Slack", "yajanarao/flaneur", "Atul (DM) - Slack"])
         #expect(state.rows.map(\.subtitle) == ["Atul (DM) - Slack", "Yab · workspace 3", "Slack · workspace 3"])
         #expect(state.rows.map(\.badge) == ["1 window", "current", ""])
 
-        // Typing a workspace number finds even an empty one, for a clean jump.
         _ = state.handle(.query("workspace 2"))
         #expect(state.rows.map(\.title) == ["2"])
         #expect(state.handle(.submit) == [.dismiss(restoreFocus: false), .perform(.riftWorkspace(index: 1), generation: 1)])
@@ -1356,7 +1319,6 @@ struct LauncherStateTests {
         state = riftState()
         _ = state.handle(.query("flaneur"))
         #expect(state.rows.map(\.title) == ["yajanarao/flaneur"])
-        // Enter focuses the exact window, workspace follows.
         let window = RiftWindow(
             id: 612, app: "Yab", bundleID: "dev.serafim.fast",
             title: "yajanarao/flaneur", focused: true, workspace: 2, workspaceName: "3"
@@ -1366,11 +1328,9 @@ struct LauncherStateTests {
 
     @Test func riftMoveAndFullscreenOnlyFireOnWindowRows() {
         var state = riftState()
-        // Top row is the workspace: not a window, nothing happens.
         #expect(state.handle(.moveWindow(0)) == [])
         #expect(state.handle(.fullscreen) == [])
 
-        // First move lands on the focused window (Yab), second on the Slack window.
         _ = state.handle(.move(.down))
         #expect(state.handle(.moveWindow(1)) == [
             .perform(.riftMove(windowID: 612, workspace: 1), generation: 1),
@@ -1394,7 +1354,7 @@ struct LauncherStateTests {
         var state = riftState()
         _ = state.handle(.move(.down))
         #expect(state.handle(.close) == [.perform(.riftClose(windowID: 612), generation: 1)])
-        #expect(state.phase == .visible(.holding))
+        #expect(state.phase == .visible(.settling))
         #expect(state.rows.map(\.title) == ["3 · Slack", "Atul (DM) - Slack"])
     }
 
@@ -1407,7 +1367,6 @@ struct LauncherStateTests {
         #expect(state.rows.map(\.title) == ["Alpha"])
         #expect(state.failures == ["rift timed out"])
 
-        // The fix is a row away even while the query is down.
         _ = state.handle(.query("restart"))
         #expect(state.rows.map(\.title) == ["Restart Rift"])
         #expect(state.rows.map(\.icon) == [.symbol("arrow.clockwise")])
@@ -1418,23 +1377,19 @@ struct LauncherStateTests {
     }
 
     @Test func workspaceDigitsAndControlFNeedTheirModifiers() {
-        // ⌘2 / ⇧⌥2 both move to workspace index 1, matching the comb1+N binding.
         #expect(Key(event: keyEvent(19, .command)) == .moveWindow(1))
         #expect(Key(event: keyEvent(19, [.option, .shift])) == .moveWindow(1))
         #expect(Key(event: keyEvent(29, .command)) == .moveWindow(9))
         #expect(Key(event: keyEvent(3, .control)) == .fullscreen)
-        // A bare digit is typing, and ⌘ with a non-digit is not a move.
         #expect(Key(event: keyEvent(19, [])) == nil)
         #expect(Key(event: keyEvent(17, .command)) == nil)
     }
 
     @Test func actionsAreTheRowsTruth() {
-        // A clip: copy, nothing else.
         let clip = Item.clip(Clip(text: "hello"))
         #expect(clip.actions.map(\.chord) == [.enter])
         #expect(clip.actions.first?.run == .copy("hello"))
 
-        // A rift window: focus, ten moves, fullscreen, close.
         let riftWindow = RiftWindow(
             id: 7, app: "Yab", bundleID: "dev.serafim.fast",
             title: "Page", focused: false, workspace: 1, workspaceName: "2"
@@ -1443,7 +1398,6 @@ struct LauncherStateTests {
         #expect(window.actions.map(\.chord) == [.enter] + (0..<10).map { .moveWindow($0) } + [.fullscreen, .close])
         #expect(window.actions.first?.run == .perform(.riftWindow(riftWindow)))
 
-        // A notice is dismissed, not closed; a non-running app cannot be quit.
         let notice = Item.notice(RexNotice(
             id: "n", blockID: "b", sessionID: "s", sessionLabel: "", title: "t", body: "", date: Date()
         ))
@@ -1452,10 +1406,11 @@ struct LauncherStateTests {
         #expect(installed.actions.map(\.chord) == [.enter])
     }
 
-    @Test func quitAndRestartNeedTheirModifiers() {
+    @Test func controlQQuitsFlaneurAndControlShiftQQuitsTheSelectedApp() {
+        #expect(Key(event: keyEvent(12, .control)) == .quitFlaneur)
         #expect(Key(event: keyEvent(12, [.control, .shift])) == .quit)
         #expect(Key(event: keyEvent(15, .command)) == .restart)
-        #expect(Key(event: keyEvent(12, .control)) == nil)
+        #expect(Key(event: keyEvent(12, [])) == nil)
         #expect(Key(event: keyEvent(15, [])) == nil)
     }
 
@@ -1469,15 +1424,12 @@ struct LauncherStateTests {
             Clip(text: "fresh clip"), Clip(text: "older clip"),
         ])))
 
-        // ,c lists every clip in capture order; apps stay out, resting exclusion bypassed.
         _ = state.handle(.query(",c"))
         #expect(state.rows.map(\.title) == ["fresh clip", "older clip"])
 
-        // Text after the prefix searches within the source.
         _ = state.handle(.query(",c fresh"))
         #expect(state.rows.map(\.title) == ["fresh clip"])
 
-        // An unknown letter is just a query.
         _ = state.handle(.query(",z"))
         #expect(state.rows.isEmpty)
     }
@@ -1490,15 +1442,12 @@ struct LauncherStateTests {
         ])))
         _ = state.handle(.collected(.clipboard, generation: 1, .clips([Clip(text: "hello world")])))
 
-        // One letter is the picker; a one-letter global search finds nothing anyway.
         _ = state.handle(.query("c"))
         #expect(state.rows.map(\.title) == ["hello world"])
 
-        // The next letter is just typing: global filtering resumes without copied text.
         _ = state.handle(.query("cl"))
         #expect(state.rows.map(\.title) == ["Clippy"])
 
-        // Backspace returns to the picker.
         _ = state.handle(.query("c"))
         #expect(state.rows.map(\.title) == ["hello world"])
     }
@@ -1516,7 +1465,6 @@ struct LauncherStateTests {
         _ = state.handle(.query("fresh"))
         #expect(state.rows.map(\.title) == ["fresh clip"])
 
-        // Clearing keeps the clipboard context and restores its MRU listing.
         _ = state.handle(.clearLine)
         #expect(state.prompt == "Search clipboard")
         #expect(state.rows.map(\.title) == ["fresh clip", "older clip"])
@@ -1547,20 +1495,17 @@ struct LauncherStateTests {
         #expect(state.rows.map(\.title) == ["BraveTab"])
         _ = state.handle(.query("y"))
         #expect(state.rows.map(\.title) == ["YabTab"])
-        // Sticky narrowing inside one browser.
         _ = state.handle(.query(",b brave"))
         #expect(state.rows.map(\.title) == ["BraveTab"])
     }
 
     @Test func workspaceScopeListsEvenEmptyOnes() {
         var state = riftState()
-        // Resting hides the empty focused workspace and the service row; w shows all of rift.
         #expect(state.rows.map(\.title) == ["3 · Slack", "yajanarao/flaneur", "Atul (DM) - Slack"])
         _ = state.handle(.query("w"))
         #expect(state.rows.map(\.title) == [
             "2", "3 · Slack", "Atul (DM) - Slack", "yajanarao/flaneur", "Restart Rift",
         ])
-        // The sticky variant narrows inside the source.
         _ = state.handle(.query(",w slack"))
         #expect(state.rows.isEmpty == false)
         #expect(state.rows.allSatisfy { $0.title.contains("Slack") || $0.subtitle.contains("Slack") })

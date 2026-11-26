@@ -3,23 +3,17 @@ import SwiftUI
 
 enum Key: Sendable, Equatable {
     case up, down, enter, escape, backspace
-    /// ⌃O: open the selected row's link in the browser. ⌃Y: yank it to the clipboard.
     case open, yank
-    /// ⌘W: close the selected browser or Herdr tab. The panel stays open.
     case close
     /// ⌘1…⌘0 or ⇧⌥1…⇧⌥0: move the selected rift window to that workspace (carries
     /// the 0-based index). ⇧⌥ mirrors the comb1+N binding outside the panel.
     case moveWindow(Int)
-    /// ⌃F: focus the selected rift window and toggle true fullscreen.
     case fullscreen
-    /// ⌃⇧Q: quit the selected app. ⌘R: restart it.
     case quit, restart
-    /// ⌃R: run a workflow for the selected GitHub repository.
+    case quitFlaneur
     case runWorkflow
-    /// ⌃U: clear the search line. Vim insert-mode kill-to-start.
     case clear
 
-    /// Number-row key codes in order: 1 2 3 4 5 6 7 8 9 0 → workspace index 0…9.
     private static let workspaceKeyCodes: [UInt16: Int] = [
         18: 0, 19: 1, 20: 2, 21: 3, 23: 4, 22: 5, 26: 6, 28: 7, 25: 8, 29: 9,
     ]
@@ -36,6 +30,7 @@ enum Key: Sendable, Equatable {
         case 16 where mods == .control: self = .yank
         case 13 where mods == .command: self = .close
         case 3 where mods == .control: self = .fullscreen
+        case 12 where mods == .control: self = .quitFlaneur
         case 12 where mods == [.control, .shift]: self = .quit
         case 15 where mods == .command: self = .restart
         case 15 where mods == .control: self = .runWorkflow
@@ -53,13 +48,16 @@ enum Key: Sendable, Equatable {
 
 final class LauncherPanel: NSPanel {
     static let panelSize = NSSize(width: 750, height: 480)
+    static let shadowInset: CGFloat = 36
 
     private let onKey: (Key) -> Bool
 
     init(content: some View, onKey: @escaping (Key) -> Bool) {
         self.onKey = onKey
+        let inset = Self.shadowInset
+        let windowSize = NSSize(width: Self.panelSize.width + 2 * inset, height: Self.panelSize.height + 2 * inset)
         super.init(
-            contentRect: NSRect(origin: .zero, size: Self.panelSize),
+            contentRect: NSRect(origin: .zero, size: windowSize),
             styleMask: [.borderless, .nonactivatingPanel],
             backing: .buffered,
             defer: true
@@ -71,11 +69,30 @@ final class LauncherPanel: NSPanel {
         isReleasedWhenClosed = false
         isOpaque = false
         backgroundColor = .clear
-        hasShadow = true
+        hasShadow = false
         animationBehavior = .none
+        let container = NSView(frame: NSRect(origin: .zero, size: windowSize))
+        let panelFrame = container.bounds.insetBy(dx: inset, dy: inset)
+        let shadow = NSView(frame: panelFrame)
+        shadow.wantsLayer = true
+        shadow.layer?.shadowColor = NSColor.black.cgColor
+        shadow.layer?.shadowOpacity = 0.32
+        shadow.layer?.shadowRadius = 14
+        shadow.layer?.shadowOffset = CGSize(width: 0, height: -6)
+        shadow.layer?.shadowPath = CGPath(roundedRect: shadow.bounds, cornerWidth: 14, cornerHeight: 14, transform: nil)
+        container.addSubview(shadow)
         let hosting = NSHostingView(rootView: content)
-        hosting.autoresizingMask = [.width, .height]
-        contentView = hosting
+        if #available(macOS 26.0, *) {
+            let glass = NSGlassEffectView(frame: panelFrame)
+            glass.cornerRadius = 14
+            glass.contentView = hosting
+            container.addSubview(glass)
+        } else {
+            hosting.frame = panelFrame
+            hosting.autoresizingMask = [.width, .height]
+            container.addSubview(hosting)
+        }
+        contentView = container
     }
 
     @available(*, unavailable)
@@ -101,7 +118,9 @@ final class LauncherPanel: NSPanel {
             let size = Self.panelSize
             let x = min(max(visible.midX - size.width / 2, visible.minX), visible.maxX - size.width)
             let y = min(max(visible.midY - size.height / 2, visible.minY), visible.maxY - size.height)
-            setFrame(NSRect(origin: NSPoint(x: x, y: y), size: size), display: true)
+            let inset = Self.shadowInset
+            let windowSize = NSSize(width: size.width + 2 * inset, height: size.height + 2 * inset)
+            setFrame(NSRect(origin: NSPoint(x: x - inset, y: y - inset), size: windowSize), display: true)
         }
         NSApp.activate(ignoringOtherApps: true)
         makeKeyAndOrderFront(nil)

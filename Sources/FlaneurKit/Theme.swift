@@ -63,8 +63,6 @@ public struct Theme: Sendable {
         scheme == .dark ? dark : light
     }
 
-    /// Defaults mirror the Rex terminal's themes, so the panel looks native next to it:
-    /// misty-forest (dark) and orchard-breeze (light). accent = its cursor, row = its selection.
     public static let defaults = Theme(
         dark: Palette(
             background: 0x131A16, text: 0xC4D2C5, muted: 0x8F9988, placeholder: 0x55665A, rule: 0x1F2C24,
@@ -98,7 +96,6 @@ public struct Theme: Sendable {
             .appendingPathComponent(".config/flaneur/config.toml")
     }
 
-    /// `hotkey = "…"` from the config file, nil when unset or unreadable.
     public static func hotkeySpec() -> String? {
         guard let text = try? String(contentsOf: configURL, encoding: .utf8) else { return nil }
         return hotkey(in: text)

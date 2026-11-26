@@ -1,8 +1,4 @@
 #!/bin/sh
-# dev.sh — watch Sources/ and Package.swift; on every save: incremental debug
-# build, relaunch the app, and pop the panel (the binary toggles on --toggle
-# when no other instance is running). Ctrl-C stops the loop, kills the dev
-# instance, and relaunches the installed app if it was running before.
 set -eu
 
 root=$(CDPATH= cd -- "$(dirname "$0")/.." && pwd)
@@ -31,8 +27,6 @@ launch() {
     app_pid=$!
 }
 
-# One instance per bundle id: the installed app yields to the dev build, and is
-# restored on exit only if it was the one running.
 if pgrep -x flaneur >/dev/null && ps -o comm= -p "$(pgrep -x flaneur | head -1)" | grep -q "Flaneur.app"; then
     restore_app=1
 fi

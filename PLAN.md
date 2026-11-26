@@ -54,7 +54,7 @@ from `~/.config/flaneur/` with automatic system light/dark detection. That is al
 
 - `NSPanel`, `styleMask = [.borderless, .nonactivatingPanel]`, `canBecomeKey = true` override
 - `level = .floating`, `collectionBehavior = [.moveToActiveSpace, .fullScreenAuxiliary]` → appears on the current Space, even over fullscreen apps
-- `.thinMaterial` under an 80% palette tint (solid color when Reduce Transparency is on) + corner radius 14 + shadow
+- `NSGlassEffectView` with a 15% palette wash on macOS 26+; `.thinMaterial` under an 80% palette tint on earlier macOS (solid color when Reduce Transparency is on) + corner radius 14 + shadow
 - Look: rounded inset selection (r8, 6px inset — no accent bar), accent-colored caret,
   fuzzy matches in accent + semibold (no underline), favicons get a 0.5pt `rule` hairline
   (white-on-transparent glyphs stay visible on light themes), footer shows per-row key
@@ -73,7 +73,7 @@ from `~/.config/flaneur/` with automatic system light/dark detection. That is al
 | rex sessions + blocks | `rex ls --json`; per session `session.view` (placed blocks, focus, tab count) + `rex block ls --json` (adds detached blocks) | `  editor — Window · session` · `  arid-oasis — session · 3 tabs` | `rex do session.select session_id=… window_id=…` (shows the session in the app) **+** `rex block focus` **+** activate Rex; detached blocks select their session only |
 | t3 threads | `~/.t3/userdata/statev2.sqlite` read-only (`orchestration_v2_projection_threads` ⨝ `projection_projects`, newest 30, WAL read so rows stay fresh) + `~/.t3/userdata/environment-id` | `  Fix the launcher — bento · dev` (badge: age) | activate/launch the app, then `t3code://threads/<env>/<thread>` — the URL must not be the launch event (cold-launch drops it, t3code#18613) |
 | browser tabs | `osascript` per browser, only if running | `  Helium · PR #647 · Humanisys/bento` | AppleScript `set active tab index of window W to T` + activate → rift follows |
-| apps | running (`NSWorkspace`) + installed (scan `/Applications`, `~/Applications`, `/System/Applications`) | `  Ghostty — running` / `  App` | activate (rift jumps to its workspace) / launch. Running apps: **⌘R** restart (terminate → wait → relaunch), **⌃⇧Q** quit |
+| apps | running (`NSWorkspace`) + installed (scan `/Applications`, `~/Applications`, `/System/Applications`) | `  Ghostty — running` / `  App` | activate (rift jumps to its workspace) / launch. Running apps: **⌘R** restart (terminate → wait → relaunch), **⌃⇧Q** quit. **⌃Q** quits Flaneur itself |
 | rift service | static row whenever `rift-cli` exists; survives query failures | `  Restart Rift — re-adopts every window` | `launchctl kickstart -k` on whichever label supervises rift (`sh.brew.rift` via brew services, else `git.acsandmann.rift`) — `rift-cli service` is a deprecated no-op stub |
 | QuickTime Player | static row, only when the player is installed | `  Screen Recording — QuickTime Player` | osascript `new screen recording` → the File ▸ ⌃⌘N overlay; the red button is still manual |
 | clipboard history | `ClipboardMonitor` polls `NSPasteboard.changeCount` every 0.5 s while the app runs (the pasteboard holds only the latest copy, so capture cannot wait for a show); newest 100 text clips in `~/.config/flaneur/clips.json` | `  first line of the clip — 2h` (icon: the app it was copied in) | Enter copies it back and restores focus — the next thing after copying is pasting. No Accessibility permission, no synthetic ⌘V |
@@ -82,7 +82,8 @@ from `~/.config/flaneur/` with automatic system light/dark detection. That is al
 - Fuzzy match: ~25-line subsequence scorer (boundary + consecutive bonuses), title+subtitle, cap 100 results.
 - Row actions are data (`Item.actions: [ItemAction]` — chord, title, key label, run, exit), tinycast's
   `PopoverMenuItem` / snacks.picker's action spec: keys never name implementations, actions never
-  hardcode keys. Enter, ⌃O/⌃Y, ⌘W, ⌘1–0, ⌃F, ⌘R, ⌃⇧Q all dispatch through one lookup; the footer
+  hardcode keys. Enter, ⌃O/⌃Y, ⌘W, ⌘1–0, ⌃F, ⌘R, ⌃⇧Q all dispatch through one lookup; ⌃Q quits
+  Flaneur directly; the footer
   hint is derived from the same list. ⌘W close stays bespoke in the state machine (it mutates rows).
 - The Screen Recording row is search-only, like the Slack directory: the resting list stays the working set. Clipboard entries never appear in global search; they list only inside Clipboard mode.
 - **Source scopes**: a single-letter query previews a source (snacks.picker's leader-key pickers, adapted to

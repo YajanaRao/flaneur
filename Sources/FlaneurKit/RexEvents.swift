@@ -1,11 +1,6 @@
 import Foundation
 
-/// Follows `rex events --all --json` and turns `desktop_notification` block events
-/// (OSC 9/777 from programs in rex terminals) into notices: a banner now and an
-/// unread row in the panel until it is opened or dismissed. A missing CLI or a down
-/// server is not a failure — rex is allowed to be off; the follower just retries.
 public enum RexEvents {
-    /// Runs forever: reconnect with a pause whenever the stream ends or never starts.
     public static func notices(_ yield: @escaping @Sendable (RexNotice) -> Void) async {
         while !Task.isCancelled {
             await follow(yield)
@@ -57,7 +52,6 @@ public enum RexEvents {
                     }
                 }
             } catch {
-                // A cancelled read ends the stream the same as the process exiting.
             }
         } onCancel: {
             if process.isRunning { process.terminate() }
@@ -88,7 +82,6 @@ public enum RexEvents {
         )
     }
 
-    /// Session labels for subtitles, learned as sessions appear.
     static func sessionCreated(line: String) -> (String, String)? {
         guard line.contains("\"session_created\""),
               let wire = try? JSONDecoder().decode(SessionCreatedWire.self, from: Data(line.utf8)),
@@ -97,7 +90,6 @@ public enum RexEvents {
         return (wire.payload.session.session_id, wire.payload.session.label)
     }
 
-    /// Seed labels for sessions that already exist when the follower connects.
     private static func sessionLabels() async throws -> [String: String] {
         let data = try await Shell.run(
             Rex.binary, ["--timeout", "1s", "--autostart=false", "ls", "--json"], timeout: .seconds(2)

@@ -1,15 +1,9 @@
 import AppKit
 
-/// One captured clipboard entry: the text as copied, the app it was copied in, and when.
 public struct Clip: Hashable, Sendable, Codable {
-    /// Stable identity: a re-copy bumps the entry but keeps its id, so a pinned row holds.
     public let id: UUID
     public let text: String
-    /// Bundle ID of the app frontmost when the copy was captured. The pasteboard
-    /// carries no source, so it is attributed to whatever was frontmost then.
     public let source: String?
-    /// The app's display name, resolved at capture. Searchable, never shown as the icon:
-    /// a row's icon says what the clip is, not where it came from.
     public let sourceName: String?
     public let at: Date
 
@@ -22,9 +16,6 @@ public struct Clip: Hashable, Sendable, Codable {
     }
 }
 
-/// The clipboard history, newest first. A re-copy moves the entry back to the front
-/// instead of duplicating it, the way yanking the same text twice keeps one register.
-/// A missing or unreadable file is an empty history: the launcher still opens.
 struct Clips: Equatable, Sendable {
     static let limit = 100
 
@@ -78,22 +69,16 @@ struct Clips: Equatable, Sendable {
     }
 }
 
-/// Watches the general pasteboard and keeps the history: a 0.5 s poll of the change
-/// count, the same cadence other launchers use. Read-only — the panel's own copies
-/// land in the history like any other. Copies tagged as secrets by password managers,
-/// browsers or the OS are never recorded.
 @MainActor
 public final class ClipboardMonitor {
     public static let shared = ClipboardMonitor(clips: .load())
 
-    /// Secrets are tagged by their owners: password managers, browsers, the OS.
     private static let sensitiveTypes: Set<NSPasteboard.PasteboardType> = [
         .init("org.nspasteboard.ConcealedType"),
         .init("org.nspasteboard.TransientType"),
         .init("com.apple.is-sensitive"),
     ]
 
-    /// A select-all in a log window is not history material.
     static let maxTextLength = 32_000
 
     private var clips: Clips

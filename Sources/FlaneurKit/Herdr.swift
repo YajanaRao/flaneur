@@ -7,8 +7,6 @@ enum Herdr {
     private static let socketTimeout: TimeInterval = 0.8
     private static let ghostty = Terminal.bundleID
 
-    /// One session snapshot: agents, the tabs that have none, named panes, and workspaces
-    /// when there is more than one. The socket is faster; the CLI is the fallback.
     static func collect() async throws -> [HerdrPane] {
         let loaded: [HerdrPane]
         if let data = await socket(method: "session.snapshot", params: [:]), usable(data) {
@@ -46,8 +44,6 @@ enum Herdr {
         _ = try await Shell.run(binary, ["tab", "close", tab.raw], timeout: timeout)
     }
 
-    /// The command the user started in the pane, such as `bun dev`. Shells and helper processes
-    /// (`esbuild --service`, anything under `node_modules`) are not it.
     static func service(from data: Data) -> String? {
         guard let info = try? JSONDecoder().decode(ProcessEnvelope.self, from: data).result?.running else {
             return nil
@@ -62,7 +58,6 @@ enum Herdr {
         return processes.compactMap(serviceText).first
     }
 
-    /// Puts the running command ahead of the directory. Skips it when the row already says so.
     static func showing(_ service: String?, on pane: HerdrPane) -> HerdrPane {
         let service = clean(service)
         guard !service.isEmpty else { return pane }
@@ -91,7 +86,6 @@ enum Herdr {
         return rows(snapshot)
     }
 
-    /// The panel is already gone. Ghostty still comes forward when the focus command fails.
     private static func focus(_ arguments: [String]) async throws {
         do {
             _ = try await Shell.run(binary, arguments, timeout: timeout)
@@ -338,7 +332,6 @@ enum Herdr {
         )
     }
 
-    /// A tab label that is only its position number is still unnamed.
     private static func tabLabel(_ tab: TabWire?) -> String {
         let label = clean(tab?.label)
         if label.isEmpty { return "" }
@@ -346,7 +339,6 @@ enum Herdr {
         return label
     }
 
-    /// `Fix search | bento` is the task plus the folder. The folder is already on the row.
     private static func presentable(_ summary: String, cwd: String, workspace: String) -> String {
         guard let marker = summary.range(of: " | ", options: .backwards) else { return summary }
         let head = clean(String(summary[..<marker.lowerBound]))
