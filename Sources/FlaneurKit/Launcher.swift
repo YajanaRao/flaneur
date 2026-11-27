@@ -894,7 +894,7 @@ public final class Launcher {
                 do {
                     try await perform(action)
                 } catch {
-                    FileHandle.standardError.write(Data("flaneur: activation failed: \(error)\n".utf8))
+                    Log.error("activation failed: \(error)")
                     self.send(.activationFailed(generation: generation))
                 }
             }
@@ -920,7 +920,9 @@ public final class Launcher {
             case .moveWindow(let index): self.send(.moveWindow(index))
             case .fullscreen: self.send(.fullscreen)
             case .quit: self.send(.quit)
-            case .quitFlaneur: NSApp.terminate(nil)
+            case .quitFlaneur:
+                Log.pendingQuitReason = "⌃Q pressed in the panel"
+                NSApp.terminate(nil)
             case .restart: self.send(.restart)
             case .runWorkflow: self.send(.runWorkflow)
             case .clear: self.send(.clearLine)
@@ -1052,7 +1054,7 @@ private func perform(_ action: Action) async throws {
     case .githubWorkflow(let project, let workflow, let branch, let inputs):
         let output = try await Projects.run(workflow, in: project, branch: branch, inputs: inputs)
         if !output.isEmpty {
-            FileHandle.standardError.write(Data("flaneur: \(output)\n".utf8))
+            Log.info("workflow output: \(output)")
         }
     case .screenRecording:
         try await QuickTime.startScreenRecording()
